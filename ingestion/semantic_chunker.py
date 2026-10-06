@@ -50,16 +50,17 @@ if __name__ == "__main__":
 
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
-    api_version = os.getenv("AZURE_OPENAI_API_EMBEDDING_VERSION", "2023-05-15")
     embedding_model = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
 
-    if not endpoint or not api_key:
+    if not endpoint or not api_key or not embedding_model or not api_version:
         raise RuntimeError(
-            "Missing Azure OpenAI credentials. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in .env."
+            "Missing Azure OpenAI configuration. Set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, "
+            "AZURE_OPENAI_EMBEDDING_DEPLOYMENT, and AZURE_OPENAI_API_VERSION in .env."
         )
 
     embeddings = AzureOpenAIEmbeddings(
-        model = "text-embedding-ada-002",
+        model=embedding_model,
         azure_endpoint=endpoint,
         api_key=api_key,
         api_version=api_version
