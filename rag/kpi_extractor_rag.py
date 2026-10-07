@@ -133,7 +133,9 @@ Instructions:
 
 - Use only the provided context.
 - Return null if unavailable.
-- Financial values must match the report exactly.
+- Return only the value for the requested fiscal year ({year}); do not return values for other years.
+- Each financial metric must be a single string, number, or null. Never return an object, dictionary, or year-to-value mapping for a financial metric.
+- Financial values must match the report exactly, including units and currency when stated.
 - Risk factors should be concise.
 - Growth drivers should be concise.
 - Return valid JSON only.

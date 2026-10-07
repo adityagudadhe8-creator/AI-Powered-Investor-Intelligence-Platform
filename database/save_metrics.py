@@ -3,6 +3,17 @@ from sqlalchemy import text
 from database.postgres_sql import get_engine
 
 
+def _format_qualitative_items(value) -> str | None:
+    """Store qualitative answers without splitting strings into characters."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple)):
+        return "\n".join(str(item).strip() for item in value if item is not None and str(item).strip())
+    return str(value)
+
+
 def save_metrics(
     company: str,
     year: int,
@@ -55,8 +66,12 @@ def save_metrics(
         "cash_flow": metrics.get("Cash Flow from Operating Activities") or metrics.get("cash_flow"),
         "total_assets": metrics.get("Total Assets") or metrics.get("total_assets"),
         "total_liabilities": metrics.get("Total Liabilities") or metrics.get("total_liabilities"),
-        "risk_factors": "\n".join(metrics.get("Top Risk Factors", []) or metrics.get("risk_factors", [])),
-        "growth_drivers": "\n".join(metrics.get("Top Growth Drivers", []) or metrics.get("growth_drivers", []))
+        "risk_factors": _format_qualitative_items(
+            metrics.get("Top Risk Factors") or metrics.get("risk_factors")
+        ),
+        "growth_drivers": _format_qualitative_items(
+            metrics.get("Top Growth Drivers") or metrics.get("growth_drivers")
+        )
     }
 
     with engine.begin() as connection:
