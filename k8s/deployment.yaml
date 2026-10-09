@@ -20,7 +20,7 @@ spec:
       containers:
       - name: invint
 
-        image: invintelligence.azurecr.io/invint:latest
+        image: investerintelligence.azurecr.io/invint:latest
 
         imagePullPolicy: Always
 

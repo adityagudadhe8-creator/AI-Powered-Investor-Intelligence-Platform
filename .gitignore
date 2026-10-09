@@ -53,3 +53,5 @@ dist/
 # Sensitive files
 secrets.json
 credentials.json
+# Azure CLI temporary files
+.aztmp/
