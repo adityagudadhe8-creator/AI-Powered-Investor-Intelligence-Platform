@@ -1,6 +1,7 @@
 import os
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from langchain_openai import AzureOpenAIEmbeddings
 
 from vectorstore.azure_ai_search import AzureAISearchVectorStore, Retriever
 from llm.azure_openai import get_openai_client
@@ -8,9 +9,9 @@ from llm.azure_openai import get_openai_client
 router = APIRouter()
 
 class ChatRequest(BaseModel):
-    question: str
-    company: str | None = None
-    year: int | None = None
+    question: str = Field(min_length=1, max_length=4000)
+    company: str | None = Field(default=None, min_length=1, max_length=200)
+    year: int | None = Field(default=None, ge=1900, le=2100)
 
 @router.post("/chat")
 async def chat(request: ChatRequest):
@@ -21,20 +22,21 @@ async def chat(request: ChatRequest):
             api_key=os.getenv("AZURE_SEARCH_API_KEY"),
             index_name=os.getenv("AZURE_SEARCH_INDEX_NAME")
         )
-        retriever = Retriever(vector_store.client)
+        embeddings = AzureOpenAIEmbeddings(
+            model=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        )
+        retriever = Retriever(vector_store.client, embeddings)
 
         # Retrieve relevant context
         context = ""
-        if request.company and request.year:
-            docs = retriever.invoke(
-                query=request.question,
-                company=request.company,
-                year=request.year
-            )
-        else:
-            docs = retriever.invoke(
-                query=request.question
-            )
+        docs = retriever.invoke(
+            query=request.question,
+            company=request.company,
+            year=request.year
+        )
         context = "\n\n".join(doc.page_content for doc in docs)
 
         # Build chat prompt – include retrieved context and the user question
@@ -48,4 +50,5 @@ async def chat(request: ChatRequest):
         answer = response.choices[0].message.content
         return {"answer": answer}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Keep provider credentials, endpoints, and internal diagnostics out of API responses.
+        raise HTTPException(status_code=502, detail="The investor analysis service is temporarily unavailable.") from e

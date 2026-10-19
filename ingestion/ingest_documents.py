@@ -38,15 +38,17 @@ def parse_company_year(pdf_file: Path) -> tuple[str, str]:
 def ingest_document(
     pdf_path: str,
     embeddings,
-    vector_store
+    vector_store,
+    source_name: str | None = None,
 ) -> None:
     """
     Ingest a single PDF document.
     """
     pdf_file = Path(pdf_path)
 
-    company, year = parse_company_year(pdf_file)
-    print(f"Ingesting {pdf_file.name} as company={company!r}, year={year!r}")
+    report_name = Path(source_name).name if source_name else pdf_file.name
+    company, year = parse_company_year(Path(report_name))
+    print(f"Ingesting {report_name} as company={company!r}, year={year!r}")
 
     converter = PDFToMarkdownConverter()
 
@@ -67,12 +69,12 @@ def ingest_document(
         embeddings=embeddings,
         company=company,
         year=year,
-        source_file=pdf_file.name
+        source_file=report_name
     )
 
     # Extract financial metrics using the newly ingested data
     metrics = extract_financial_metrics(
-        retriever=Retriever(vector_store.client),
+        retriever=Retriever(vector_store.client, embeddings),
         company=company,
         year=int(year) if year.isdigit() else None
     )

@@ -11,6 +11,7 @@ ENV/
 env/
 .env
 .env.*
+!.env.example
 
 # VS Code
 .vscode/

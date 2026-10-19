@@ -1,11 +1,11 @@
 import os
-from types import SimpleNamespace
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, field_validator, Field
+from pydantic import BaseModel, Field
+from langchain_openai import AzureOpenAIEmbeddings
 
 from llm.azure_openai import get_structured_completion
-from vectorstore.azure_ai_search import AzureAISearchVectorStore
+from vectorstore.azure_ai_search import AzureAISearchVectorStore, Retriever
 
 load_dotenv()
 
@@ -21,72 +21,19 @@ class FinancialMetrics(BaseModel):
     growth_drivers: str | list | None = Field(None, alias="Top Growth Drivers")
 
 
-class Retriever:
-    def __init__(self, client):
-        self.client = client
-
-    def invoke(
-        self,
-        query: str,
-        company: str | None = None,
-        year: int | None = None,
-        top_k: int = 20
-    ) -> list:
-        """
-        Retrieve relevant chunks from Azure AI Search.
-        """
-        filter_expr = None
-
-        if company and year:
-            filter_expr = (
-                f"company eq '{company}' "
-                f"and year eq '{year}'"
-            )
-
-        results = (
-            self.client.search(
-                search_text=query,
-                top=top_k,
-                filter=filter_expr
-            )
-            if filter_expr
-            else self.client.search(
-                search_text=query,
-                top=top_k
-            )
-        )
-
-        documents = []
-
-        for result in results:
-            content = result.get("content", "")
-            documents.append(
-                SimpleNamespace(
-                    page_content=content
-                )
-            )
-
-        return documents
-
-
 def retrieve_context(
     retriever: Retriever,
     company: str,
-    year: int
+    year: int | None
 ) -> str:
     """
     Retrieve broad financial context from the vector store.
     """
-    query = f"""
-    Annual report financial statements,
-    income statement,
-    balance sheet,
-    cash flow statement,
-    risks,
-    growth drivers,
-    financial performance
-    for {company} fiscal year {year}
-    """
+    query = (
+        f"{company} fiscal year {year} annual report financial results: "
+        "revenue, net income, operating income, cash flow from operating activities, "
+        "total assets, total liabilities, principal risks, and growth drivers."
+    )
 
     documents = retriever.invoke(
         query=query,
@@ -94,11 +41,22 @@ def retrieve_context(
         year=year,
         top_k=20
     )
-    # print(documents)
-    return "\n\n".join(
+    if not documents:
+        raise ValueError(
+            f"No report passages were retrieved for {company} {year}. "
+            "Check that the report chunks were indexed and that the search filters match."
+        )
+    context = "\n\n".join(
         doc.page_content
         for doc in documents
+        if doc.page_content and doc.page_content.strip()
     )
+    if not context:
+        raise ValueError(
+            f"Search returned no usable report text for {company} {year}. "
+            "Check the indexed content field and PDF text extraction."
+        )
+    return context
 
 
 def build_extraction_prompt(
@@ -110,7 +68,7 @@ def build_extraction_prompt(
     Build KPI extraction prompt.
     """
     return f"""
-You are an expert financial analyst.
+You are an expert financial analyst extracting values from the supplied annual report passages.
 
 Company: {company}
 Year: {year}
@@ -133,6 +91,8 @@ Instructions:
 
 - Use only the provided context.
 - Return null if unavailable.
+- Search across every supplied passage for the requested metric; values may appear in tables or prose and may use millions or billions.
+- If a metric appears in the context, extract it rather than returning null. Preserve the report's currency and units.
 - Return only the value for the requested fiscal year ({year}); do not return values for other years.
 - Each financial metric must be a single string, number, or null. Never return an object, dictionary, or year-to-value mapping for a financial metric.
 - Financial values must match the report exactly, including units and currency when stated.
@@ -167,12 +127,25 @@ def extract_financial_metrics(
         response_model=FinancialMetrics
     )
 
-    return metrics.model_dump()
+    result = metrics.model_dump()
+    if not any(value is not None for value in result.values()):
+        raise ValueError(
+            f"The model could not extract any financial metrics for {company} {year}. "
+            "Review the retrieved passages and the model deployment before saving results."
+        )
+    return result
 
 
 def main() -> None:
     company = "Apple"
     year = 2024
+
+    embeddings = AzureOpenAIEmbeddings(
+        model=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+    )
 
     vector_store = AzureAISearchVectorStore(
         endpoint=os.getenv("AZURE_SEARCH_ENDPOINT"),
@@ -180,9 +153,7 @@ def main() -> None:
         index_name=os.getenv("AZURE_SEARCH_INDEX_NAME")
     )
 
-    retriever = Retriever(
-        vector_store.client
-    )
+    retriever = Retriever(vector_store.client, embeddings)
 
     results = extract_financial_metrics(
         retriever=retriever,

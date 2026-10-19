@@ -2,6 +2,7 @@ import uuid
 
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
+from azure.search.documents.models import VectorizedQuery
 from types import SimpleNamespace
 
 
@@ -57,8 +58,9 @@ class Retriever:
     """Simple wrapper around Azure Search client for retrieving relevant chunks.
     Mirrors the Retriever used in the RAG extractor.
     """
-    def __init__(self, client):
+    def __init__(self, client, embeddings=None):
         self.client = client
+        self.embeddings = embeddings
 
     def invoke(
         self,
@@ -71,23 +73,30 @@ class Retriever:
         Returns a list of SimpleNamespace objects with `page_content`.
         """
         filter_expr = None
-        if company and year:
-            filter_expr = (
-                f"company eq '{company}' "
-                f"and year eq '{year}'"
-            )
-        results = (
-            self.client.search(
-                search_text=query,
-                top=top_k,
-                filter=filter_expr
-            )
-            if filter_expr
-            else self.client.search(
-                search_text=query,
-                top=top_k
-            )
-        )
+        filters = []
+        if company:
+            # Escape apostrophes per OData string-literal rules.
+            escaped_company = company.replace("'", "''")
+            filters.append(f"company eq '{escaped_company}'")
+        if year is not None:
+            filters.append(f"year eq '{year}'")
+        if filters:
+            filter_expr = " and ".join(filters)
+        search_options = {
+            "search_text": query,
+            "top": top_k,
+            "filter": filter_expr,
+        }
+        if self.embeddings is not None:
+            search_options["vector_queries"] = [
+                VectorizedQuery(
+                    vector=self.embeddings.embed_query(query),
+                    k_nearest_neighbors=top_k,
+                    fields="content_vector",
+                )
+            ]
+
+        results = self.client.search(**search_options)
         documents = []
         for result in results:
             content = result.get("content", "")
