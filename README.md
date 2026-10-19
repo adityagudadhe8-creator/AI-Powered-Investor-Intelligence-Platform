@@ -10,7 +10,27 @@ A FastAPI backend that ingests annual-report PDFs, indexes report sections in Az
 - Answers questions using retrieved report context through `POST /api/chat`.
 - Displays saved metrics in the dashboard and exposes them through `GET /api/metrics`.
 - Exposes `GET /health` for a basic process health check.
+## Screenshots
 
+### Dashboard
+Compare Apple and Microsoft financial metrics.
+
+![Investor dashboard](screenshots/dashboard-multi-company.png)
+
+### AI analyst
+Ask questions about company reports.
+
+![AI analyst chat](screenshots/chatbot-company-insights.png)
+
+### Report extraction
+See the extracted metrics after report processing.
+
+![Report extraction](screenshots/report-extraction-complete.png)
+
+### Database
+View extracted metrics stored in PostgreSQL.
+
+![PostgreSQL metrics](screenshots/postgresql-metrics-records.png)
 ## Architecture
 
 ```text
